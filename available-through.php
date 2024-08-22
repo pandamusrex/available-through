@@ -1,0 +1,106 @@
+<?php
+/**
+ * Plugin Name: Available Through
+ * Version: 1.0.0
+ * Plugin URI: https://github.com/pandamusrex/available-through
+ * Description: Disable adding a product to the cart after a date
+ * Author: PandamusRex
+ * Author URI: https://www.github.com/pandamusrex/
+ * Requires at least: 4.0
+ * Tested up to: 4.0
+ *
+ * Text Domain: available-through
+ * Domain Path: /lang/
+ *
+ * @package WordPress
+ * @author PandamusRex
+ * @since 1.0.0
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+function available_through_add_meta_box() {
+	add_meta_box( 'available_through_sectionid', __( 'Available Through' ), 'available_through_meta_box', 'product', 'side', 'high' );
+}
+add_action( 'add_meta_boxes', 'available_through_add_meta_box' );
+
+function available_through_is_product_purchaseable( $productID ) {
+	$is_purchasable = true;
+
+	$available_through_date = get_post_meta( $productID, '_available_through_date', true);
+	if (!empty( $available_through_date )) {
+		$sale_ends_timestamp = strtotime( $available_through_date ) + 86400;
+		$current_timestamp_with_tz = current_datetime()->getTimestamp();
+		if ( $sale_ends_timestamp < $current_timestamp_with_tz ) {
+			$is_purchasable = false;
+		}
+	}
+
+	return $is_purchasable;
+}
+
+function available_through_meta_box( $product ) {
+	echo '<input type="hidden" name="available_through_nonce" id="available_through_nonce" value="' . esc_attr( wp_create_nonce( 'available_through-' . $product->ID ) ) . '" />';
+
+	$available_through_date = get_post_meta( $product->ID, '_available_through_date', true);
+
+	echo esc_html__( 'Allow purchasing through' );
+	echo '<br><br>';
+	echo '<input type="text" id="_available_through_date" name="_available_through_date" value="' . esc_attr( $available_through_date ) . '" size="10" maxlength="10" />';
+	echo '<br><br>';
+	echo esc_html__( 'Enter date in the form mm/dd/yyyy.  Leave empty to allow perpetual sales.' );
+
+	if ( !available_through_is_product_purchaseable( $product->ID ) ) {
+		echo '<br><br>';
+		echo esc_html__( 'Note: Sales of this product have ended.' );	
+	}
+}
+
+function available_through_save_postdata( $product_id ) {
+	if ( ! wp_verify_nonce( $_POST['available_through_nonce'], 'available_through-' . $product_id ) ) {
+		return $product_id;
+	}
+
+	// verify if this is an auto save routine. If it is our form has not been submitted, so we dont want
+	// to do anything
+	if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE )
+	return $product_id;
+
+	// Check permissions
+	if ( 'page' == $_POST['post_type'] ) {
+		if ( ! current_user_can( 'edit_page', $product_id ) )
+			return $product_id;
+	} else {
+		if ( ! current_user_can( 'edit_post', $product_id ) )
+			return $product_id;
+	}
+
+	// OK, we're authenticated: we need to find and save the data
+	$user_entered_date = $_POST['_available_through_date'];
+
+	if ( empty( $user_entered_date ) ) {
+		delete_post_meta( $product_id, '_available_through_date' );
+	} else {
+		// Attempt to convert user entered date into unix time and then back to mm/dd/yyyy
+		$timestamp = strtotime( $user_entered_date );
+		if ( $timestamp ) {
+			$available_through_date = strftime( "%m/%d/%Y", $timestamp );
+			update_post_meta( $product_id, '_available_through_date', $available_through_date );
+		} else {
+			delete_post_meta( $product_id, '_available_through_date' );
+		}
+	}
+
+	return $product_id;
+}
+add_action( 'save_post', 'available_through_save_postdata' );
+
+function available_through_woocommerce_is_purchasable( $is_purchasable, $product ) {
+	if ( !available_through_is_product_purchaseable( $product->get_id() ) ) {
+		$is_purchasable = false;
+	}
+	return $is_purchasable;
+}
+add_filter( 'woocommerce_is_purchasable', 'available_through_woocommerce_is_purchasable', 10, 2 );
