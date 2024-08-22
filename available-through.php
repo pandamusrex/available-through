@@ -104,3 +104,21 @@ function available_through_woocommerce_is_purchasable( $is_purchasable, $product
 	return $is_purchasable;
 }
 add_filter( 'woocommerce_is_purchasable', 'available_through_woocommerce_is_purchasable', 10, 2 );
+
+add_action( 'template_redirect', 'available_through_remove_product_from_cart' );
+function available_through_remove_product_from_cart() {
+    // Run only in the Cart or Checkout Page
+    if ( is_cart() || is_checkout() ) {
+        // Cycle through each product in the cart
+        foreach ( WC()->cart->cart_contents as $prod_in_cart ) {
+			$productID = $prod_in_cart['product_id'];
+            if ( !available_through_is_product_purchaseable( $productID )) {
+                // Get it's unique ID within the Cart
+                $prod_unique_id = WC()->cart->generate_cart_id( $productID );
+                // Remove it from the cart by un-setting it
+                unset( WC()->cart->cart_contents[$prod_unique_id] );
+            }
+        }
+
+    }
+}
