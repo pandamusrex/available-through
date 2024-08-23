@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: Available Through
- * Version: 1.0.0
+ * Version: 1.0.2
  * Plugin URI: https://github.com/pandamusrex/available-through
  * Description: Disable adding a product to the cart after a date
  * Author: PandamusRex
@@ -59,6 +59,10 @@ function available_through_meta_box( $product ) {
 }
 
 function available_through_save_postdata( $product_id ) {
+	if ( ! array_key_exists( 'available_through_nonce', $_POST ) ) {
+		return $product_id;
+	}
+
 	if ( ! wp_verify_nonce( $_POST['available_through_nonce'], 'available_through-' . $product_id ) ) {
 		return $product_id;
 	}
@@ -78,7 +82,10 @@ function available_through_save_postdata( $product_id ) {
 	}
 
 	// OK, we're authenticated: we need to find and save the data
-	$user_entered_date = $_POST['_available_through_date'];
+	$user_entered_date = '';
+	if ( array_key_exists( '_available_through_date', $_POST ) ) {
+		$user_entered_date = $_POST['_available_through_date'];
+	}
 
 	if ( empty( $user_entered_date ) ) {
 		delete_post_meta( $product_id, '_available_through_date' );
@@ -105,9 +112,16 @@ function available_through_woocommerce_is_purchasable( $is_purchasable, $product
 }
 add_filter( 'woocommerce_is_purchasable', 'available_through_woocommerce_is_purchasable', 10, 2 );
 
-add_action( 'template_redirect', 'available_through_remove_product_from_cart' );
 function available_through_remove_product_from_cart() {
-    // Run only in the Cart or Checkout Page
+	if ( ! function_exists( 'is_cart' ) ) {
+		return;
+	}
+
+	if ( ! function_exists( 'is_checkout' ) ) {
+		return;
+	}
+
+	// Run only in the Cart or Checkout Page
     if ( is_cart() || is_checkout() ) {
         // Cycle through each product in the cart
         foreach ( WC()->cart->cart_contents as $prod_in_cart ) {
@@ -122,3 +136,4 @@ function available_through_remove_product_from_cart() {
 
     }
 }
+add_action( 'template_redirect', 'available_through_remove_product_from_cart' );
