@@ -105,13 +105,21 @@ function available_through_save_postdata( $product_id ) {
 add_action( 'save_post', 'available_through_save_postdata' );
 
 function available_through_woocommerce_is_purchasable( $is_purchasable, $product ) {
-	if ( !available_through_is_product_purchaseable( $product->get_id() ) ) {
+	if ( $product->is_type('variation') ) {
+		$product_id = $product->get_parent_id();
+	} else {
+		$product_id = $product->get_id();
+	}
+
+	if ( !available_through_is_product_purchaseable( $product_id ) ) {
 		$is_purchasable = false;
 	}
 	return $is_purchasable;
 }
 add_filter( 'woocommerce_is_purchasable', 'available_through_woocommerce_is_purchasable', 10, 2 );
+add_filter( 'woocommerce_variation_is_purchasable', 'available_through_woocommerce_is_purchasable', 10, 2 );
 
+// Inspired by https://www.sitepoint.com/woocommerce-actions-and-filters-manipulate-cart/
 function available_through_remove_product_from_cart() {
 	if ( ! function_exists( 'is_cart' ) ) {
 		return;
@@ -125,10 +133,14 @@ function available_through_remove_product_from_cart() {
     if ( is_cart() || is_checkout() ) {
         // Cycle through each product in the cart
         foreach ( WC()->cart->cart_contents as $prod_in_cart ) {
-			$productID = $prod_in_cart['product_id'];
-            if ( !available_through_is_product_purchaseable( $productID )) {
+			// Handle simple products and variable products appropriately
+			// Get the Variation or Product ID
+			$is_variation = ( isset( $prod_in_cart['variation_id'] ) && $prod_in_cart['variation_id'] != 0 );
+            $product_id = $is_variation ? $prod_in_cart['variation_id'] : $prod_in_cart['product_id'];
+			$product_id = $prod_in_cart['product_id'];
+            if ( !available_through_is_product_purchaseable( $product_id )) {
                 // Get it's unique ID within the Cart
-                $prod_unique_id = WC()->cart->generate_cart_id( $productID );
+                $prod_unique_id = WC()->cart->generate_cart_id( $product_id );
                 // Remove it from the cart by un-setting it
                 unset( WC()->cart->cart_contents[$prod_unique_id] );
             }
